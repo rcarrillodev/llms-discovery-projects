@@ -5,11 +5,15 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 import requests
 import os
+import logging
 
 load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 POKE_API_URL = "https://pokeapi.co/api/v2/pokemon"
 FLAVORS_URL = "https://pokeapi.co/api/v2/pokemon-species"
+
+logging.basicConfig(level=logging.INFO)
+
 
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=GOOGLE_API_KEY)
@@ -49,9 +53,10 @@ agent = create_react_agent(
 )
 
 res = agent.invoke(
-    {"messages": [{"role": "user", "content": "what pokemon is pichu? give me its description and locations"}]}
+    {"messages": [{"role": "user", "content": "what pokemon is pichu? give me its description, its ID, at least 5 random attacks, and locations"}]}
 )
 
+logging.debug("Response: %s", res)
 for msg in reversed(res["messages"]):
     if msg.__class__.__name__ == "AIMessage" and msg.content:
         print("AI:", msg.content)
