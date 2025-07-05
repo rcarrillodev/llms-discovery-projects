@@ -2,3 +2,4 @@
 venv/
 .vscode/
 tts_audios/
+__pycache__/

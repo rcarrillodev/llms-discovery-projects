@@ -3,7 +3,6 @@ from langgraph.prebuilt import create_react_agent
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from elevenlabs.client import ElevenLabs
-from elevenlabs import VoiceSettings
 from dotenv import load_dotenv
 import requests
 import os
@@ -48,19 +47,6 @@ def get_pokemon_data (pokemon:str, language:str) -> str:
         logging.error("Failed to fetch flavor data for pokemon_id: %s, status code: %s", pokedex_entry["pokemon_id"], response.status_code)
     return json.dumps(pokedex_entry, indent=2, ensure_ascii=False)
 
-def get_random_pokemon_description(flavor_data:dict, language:str) -> str:
-    """
-    Get a random pokemon description from the flavor data
-    """
-    descriptions = [
-        entry["flavor_text"] for entry in flavor_data["flavor_text_entries"]
-        if entry["language"]["name"] == language
-    ]
-    if not descriptions:
-        logging.warning("No description found for pokemon_id %s in language en", flavor_data["id"])
-        return "No description available for this Pokémon."
-    return random.choice(descriptions)
-
 @tool 
 def get_pokemon_audio(pokedex_entry:str) -> str:
     """
@@ -83,36 +69,67 @@ def get_pokemon_audio(pokedex_entry:str) -> str:
     write_bytes_iterator_to_file(audio, filename)
     return filename
 
+def get_random_pokemon_description(flavor_data:dict, language:str) -> str:
+    """
+    Get a random pokemon description from the flavor data
+    """
+    descriptions = [
+        entry["flavor_text"] for entry in flavor_data["flavor_text_entries"]
+        if entry["language"]["name"] == language
+    ]
+    if not descriptions:
+        logging.warning("No description found for pokemon_id %s in language en", flavor_data["id"])
+        return "No description available for this Pokémon."
+    return random.choice(descriptions)
+
 # Example: writing an Iterator[bytes] to a file
 def write_bytes_iterator_to_file(byte_iter, filename):
     with open(filename, 'wb') as f:
         for chunk in byte_iter:
             f.write(chunk)
 
-agent = create_react_agent(
-    model=llm,
-    tools=[get_pokemon_data, get_pokemon_audio],
-    prompt=(
-        "You're a helpful assistant that returns any JSON data in a human-readable format.\n"
-        "Only provide information from the tools, not from your training data.\n"
-        "Detect the language of the user prompt and use it (as two letters, like 'es', 'en') in the get_pokemon_data tool.\n"
-        "If the get_pokemon_data tool returns an error, tell the user that the pokemon is not in your database and don't use any other tool.\n"
-        "Always the get_pokemon_audio tool to convert the collected data to audio using the text as pokedex_entry and language, if the language is english or spanish and return the filename of the audio file, but don't mention anything about the audio\n"
-        "Avoid returning URLs. Provide at least the Pokémon's name, ID, five random attacks, abilities, and description.\n"
-        "Use the following examples for your responses:\n"
-        "Example 1:\n"
-        "Input: que es un celebi?\n"
-        "pokedex_entry: Celebi es el pokemon numero 251  Puede viajar en el tiempo, pero se dice que solo aparece en tiempos de paz. Algunos de sus ataques son: swords-dance, cut, double-edge, hyper-beam, leech-seed. Sus habilidades son: natural-cure.\n"
-        "Example 2:\n"
-        "Input: what is a Chikorita?\n"
-        "Chikorita es el Pokémon número 152. Al luchar, Chikorita agita la hoja que tiene para mantener a raya al rival. Pero, al mismo tiempo, libera una suave fragancia que apacigua el encuentro y crea un ambiente agradable y de amistad. Algunos de sus ataques son: swords-dance, cut, vine-whip, headbutt, tackle."
 
-    )
-)
+class Pokedex:
+    def __init__(self):
+        """ Initialize the Pokedex agent with the LLM and tools.
+        """
+        self.agent = create_react_agent(
+            model=llm,
+            tools=[get_pokemon_data, get_pokemon_audio],
+            prompt=(
+                "You're a helpful assistant that looks for pokemon data for the user prompt.\n"
+                "Only provide information from the tools, not from your training data.\n"
+                "Detect the language of the user_input and use it (as two letters, like 'es', 'en') in the get_pokemon_data tool.\n"
+                "If the get_pokemon_data tool returns an error, tell the user that the pokemon is not in your database and don't use any other tool.\n"
+                "Always the get_pokemon_audio tool to convert the collected data to audio using the text as pokedex_entry and language, if the language is english or spanish and return the filename of the audio file\n"
+                "Avoid returning URLs. Provide at least the Pokémon's name, ID, five random attacks, abilities, and description.\n"
+                "Use the following examples for your responses, don't return  a markdown response, just pure json data:\n"
+                "Example 1:\n"
+                "user_input: que es un celebi?\n"
+                """
+                {
+                    "pokedex_entry": "Celebi es el pokemon numero 251  Puede viajar en el tiempo, pero se dice que solo aparece en tiempos de paz. Algunos de sus ataques son: swords-dance, cut, double-edge, hyper-beam, leech-seed. Sus habilidades son: natural-cure",
+                    "audio_file": "tts_audios/pokemon_audio_547223.mp3"
+                }\n
+                """
+                "Example 2:\n"
+                "user_input: what is a Chikorita?\n"
+                """
+                {
+                    "pokedex_entry": "Chikorita is the pokemon number 152. It has a leaf on its head that can sense the temperature and humidity of the surroundings. Some of its attacks are: razor-leaf, solar-beam, synthesis, reflect, poison-powder. Its abilities are: overgrow",
+                    "audio_file": "tts_audios/pokemon_audio_123456.mp3"
+                }\n
+                """
+            )
+        )
 
-res = agent.invoke(
-    {"messages": [{"role": "user", "content": "que es un bulbasaur?"}]}
-)
-
-logging.debug("Response: %s", res)
-print(res["messages"][-1].content)
+    def invoke_agent(self, user_input: str):
+        """
+        Invoke the agent with the user input.
+        """
+        logging.info("Invoking agent with user input: %s", user_input)
+        res = self.agent.invoke({"messages": [{"role": "user", "content": user_input}]})
+        logging.debug("Response: %s", res)
+        logging.info(res["messages"][-1].content)
+        return res
+    
