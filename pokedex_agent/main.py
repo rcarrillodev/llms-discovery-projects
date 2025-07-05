@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from pokedex_agent.pokedex import Pokedex
+from agent.pokedex import Pokedex
 import logging
 import re
 import json
